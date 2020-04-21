@@ -37,6 +37,9 @@
 #define SPMI_REGULATOR_PIN_CTRL_HPM_SLEEP_B		0x10
 #define SPMI_REGULATOR_PIN_CTRL_HPM_HW_DEFAULT		0x20
 
+#define SAW_VERSION(major,minor)			((major & 0xf) << 28 | \
+							((minor & 0xfff) << 16))
+
 /*
  * Used with enable parameters to specify that hardware default register values
  * should be left unaltered.
@@ -192,20 +195,70 @@ enum spmi_boost_byp_registers {
 };
 
 enum spmi_saw3_registers {
-	SAW3_SECURE				= 0x00,
-	SAW3_ID					= 0x04,
-	SAW3_SPM_STS				= 0x0C,
-	SAW3_AVS_STS				= 0x10,
-	SAW3_PMIC_STS				= 0x14,
-	SAW3_RST				= 0x18,
-	SAW3_VCTL				= 0x1C,
-	SAW3_AVS_CTL				= 0x20,
-	SAW3_AVS_LIMIT				= 0x24,
-	SAW3_AVS_DLY				= 0x28,
-	SAW3_AVS_HYSTERESIS			= 0x2C,
-	SAW3_SPM_STS2				= 0x38,
-	SAW3_SPM_PMIC_DATA_3			= 0x4C,
-	SAW3_VERSION				= 0xFD0,
+	SAW_SECURE,
+	SAW_ID,
+	SAW_SPM_STS,
+	SAW_AVS_STS,
+	SAW_PMIC_STS,
+	SAW_RST,
+	SAW_VCTL,
+	SAW_AVS_CTL,
+	SAW_AVS_LIMIT,
+	SAW_AVS_DLY,
+	SAW_AVS_HYSTERESIS,
+	SAW_STS2,
+	SAW_PMIC_DATA_3,
+	SAW_VERSION,
+	SAW_REG_MAX
+};
+
+static uint32_t msm_spm_reg_offsets_saw21[SAW_REG_MAX] = {
+	[SAW_SECURE]		= 0x00,
+	[SAW_ID]		= 0x04,
+	[SAW_SPM_STS]		= 0x0C,
+	[SAW_AVS_STS]		= 0x10,
+	[SAW_PMIC_STS]		= 0x14,
+	[SAW_RST]		= 0x18,
+	[SAW_VCTL]		= 0x1C,
+	[SAW_AVS_CTL]		= 0x20,
+	[SAW_AVS_LIMIT]		= 0x24,
+	[SAW_AVS_DLY]		= 0x28,
+	[SAW_AVS_HYSTERESIS]	= 0x2C,
+	[SAW_PMIC_DATA_3]	= 0x4C,
+	[SAW_VERSION]		= 0xFD0,
+};
+
+static uint32_t msm_spm_reg_offsets_saw30[SAW_REG_MAX] = {
+	[SAW_SECURE]		= 0x00,
+	[SAW_ID]		= 0x04,
+	[SAW_SPM_STS]		= 0x0C,
+	[SAW_AVS_STS]		= 0x10,
+	[SAW_PMIC_STS]		= 0x14,
+	[SAW_RST]		= 0x18,
+	[SAW_VCTL]		= 0x1C,
+	[SAW_AVS_CTL]		= 0x20,
+	[SAW_AVS_LIMIT]		= 0x24,
+	[SAW_AVS_DLY]		= 0x28,
+	[SAW_AVS_HYSTERESIS]	= 0x2C,
+	[SAW_STS2]		= 0x38,
+	[SAW_PMIC_DATA_3]	= 0x4C,
+	[SAW_VERSION]		= 0xFD0,
+};
+
+static uint32_t msm_spm_reg_offsets_saw41[SAW_REG_MAX] = {
+	[SAW_SECURE]		= 0xC00,
+	[SAW_ID]		= 0xC04,
+	[SAW_STS2]		= 0xC10,
+	[SAW_SPM_STS]		= 0xC0C,
+	[SAW_AVS_STS]		= 0xC14,
+	[SAW_PMIC_STS]		= 0xC18,
+	[SAW_RST]		= 0xC1C,
+	[SAW_VCTL]		= 0x900,
+	[SAW_AVS_CTL]		= 0x904,
+	[SAW_AVS_LIMIT]		= 0x908,
+	[SAW_AVS_DLY]		= 0x90C,
+	[SAW_PMIC_DATA_3]	= 0x4C,
+	[SAW_VERSION]		= 0xFD0,
 };
 
 /* Used for indexing into ctrl_reg.  These are offets from 0x40 */
@@ -1185,6 +1238,7 @@ static irqreturn_t spmi_regulator_vs_ocp_isr(int irq, void *data)
 #define SAW3_AVS_CTL_CLEAR_MASK	0x7efc00
 
 static struct regmap *saw_regmap;
+static uint32_t *saw_offsets;
 
 static void spmi_saw_set_vdd(void *data)
 {
@@ -1193,9 +1247,12 @@ static void spmi_saw_set_vdd(void *data)
 	unsigned long timeout;
 	u8 voltage_sel = *(u8 *)data;
 
-	regmap_read(saw_regmap, SAW3_AVS_CTL, &avs_ctl);
-	regmap_read(saw_regmap, SAW3_VCTL, &vctl);
-	regmap_read(saw_regmap, SAW3_SPM_PMIC_DATA_3, &data3);
+	if (WARN_ON(!saw_offsets))
+		return;
+
+	regmap_read(saw_regmap, saw_offsets[SAW_AVS_CTL], &avs_ctl);
+	regmap_read(saw_regmap, saw_offsets[SAW_VCTL], &vctl);
+	regmap_read(saw_regmap, saw_offsets[SAW_PMIC_DATA_3], &data3);
 
 	/* select the band */
 	vctl &= ~SAW3_VCTL_CLEAR_MASK;
@@ -1208,16 +1265,16 @@ static void spmi_saw_set_vdd(void *data)
 	avs_enabled = SAW3_AVS_CTL_EN_MASK & avs_ctl;
 	if (avs_enabled) {
 		avs_ctl &= ~SAW3_AVS_CTL_TGGL_MASK;
-		regmap_write(saw_regmap, SAW3_AVS_CTL, avs_ctl);
+		regmap_write(saw_regmap, saw_offsets[SAW_AVS_CTL], avs_ctl);
 	}
 
-	regmap_write(saw_regmap, SAW3_RST, 1);
-	regmap_write(saw_regmap, SAW3_VCTL, vctl);
-	regmap_write(saw_regmap, SAW3_SPM_PMIC_DATA_3, data3);
+	regmap_write(saw_regmap, saw_offsets[SAW_RST], 1);
+	regmap_write(saw_regmap, saw_offsets[SAW_VCTL], vctl);
+	regmap_write(saw_regmap, saw_offsets[SAW_PMIC_DATA_3], data3);
 
 	timeout = jiffies + usecs_to_jiffies(100);
 	do {
-		regmap_read(saw_regmap, SAW3_PMIC_STS, &pmic_sts);
+		regmap_read(saw_regmap, saw_offsets[SAW_PMIC_STS], &pmic_sts);
 		pmic_sts &= SAW3_VCTL_DATA_MASK;
 		if (pmic_sts == (u32)voltage_sel)
 			break;
@@ -1233,7 +1290,7 @@ static void spmi_saw_set_vdd(void *data)
 		avs_ctl |= ((pmic_sts - 4) << 10);
 		avs_ctl |= (pmic_sts << 17);
 		avs_ctl |= SAW3_AVS_CTL_TGGL_MASK;
-		regmap_write(saw_regmap, SAW3_AVS_CTL, avs_ctl);
+		regmap_write(saw_regmap, saw_offsets[SAW_AVS_CTL], avs_ctl);
 	}
 }
 
@@ -2025,15 +2082,40 @@ static int qcom_spmi_regulator_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	if (of_find_property(node, "qcom,saw-reg", &lenp)) {
+		uint32_t regval = 0;
+
 		syscon = of_parse_phandle(node, "qcom,saw-reg", 0);
 		saw_regmap = syscon_node_to_regmap(syscon);
 		of_node_put(syscon);
-		if (IS_ERR(saw_regmap))
+		if (IS_ERR(saw_regmap)) {
 			dev_err(dev, "ERROR reading SAW regmap\n");
+			return PTR_ERR(saw_regmap);
+		}
+
+		regmap_read(saw_regmap, saw_offsets[SAW_VERSION], &regval);
+		switch(regval) {
+		case SAW_VERSION(2, 1):
+			saw_offsets = msm_spm_reg_offsets_saw21;
+			break;
+		case SAW_VERSION(1, 0):
+		case SAW_VERSION(3, 0):
+			saw_offsets = msm_spm_reg_offsets_saw30;
+			break;
+		case SAW_VERSION(4, 1):
+			saw_offsets = msm_spm_reg_offsets_saw41;
+			break;
+		default:
+			dev_err(dev, "Unsupported SAW version - 0x%08x\n", regval);
+			saw_regmap = NULL;
+			return -ENOTSUPP;
+		}
+
+		regmap_read(saw_regmap, saw_offsets[SAW_ID], &regval);
+		if (!(regval & 0x4))
+			return -ENODEV;
 	}
 
 	for (reg = match->data; reg->name; reg++) {
-
 		if (saw_regmap) {
 			reg_node = of_get_child_by_name(node, reg->name);
 			reg_prop = of_find_property(reg_node, "qcom,saw-slave",
