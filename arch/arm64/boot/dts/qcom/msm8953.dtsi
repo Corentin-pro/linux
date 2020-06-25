@@ -167,6 +167,11 @@
 			reg = <0x0 0x8e700000 0x0 0x700000>;
 		};
 
+		venus_mem: venus_region@90400000 {
+			reg = <0x0 0x91400000 0x0 0x700000>;
+			no-map;
+		};
+
 		dfps_data_mem@90000000 {
 			no-map;
 			reg = <0 0x90000000 0 0x1000>;
@@ -1661,6 +1666,37 @@
 				codec {
 					sound-dai = <&lpass_codec 1>, <&wcd_codec 1>;
 				};
+			};
+		};
+
+		venus@1d00000 {
+			compatible = "qcom,msm8953-venus";
+			reg = <0x1d00000 0xff000>;
+
+			interrupts = <GIC_SPI 44 IRQ_TYPE_EDGE_RISING>;
+
+			clocks = <&gcc GCC_VENUS0_VCODEC0_CLK>,
+				 <&gcc GCC_VENUS0_AHB_CLK>,
+				 <&gcc GCC_VENUS0_AXI_CLK>;
+			clock-names = "core", "iface", "bus";
+
+			power-domains = <&gcc VENUS_GDSC>, <&gcc VENUS_CORE0_GDSC>;
+			power-domain-names = "venus", "vcodec0";
+
+			iommus = <&apps_iommu 0x16>;
+
+			memory-region = <&venus_mem>;
+
+			video-decoder {
+				compatible = "venus-decoder";
+				clocks = <&gcc GCC_VENUS0_CORE0_VCODEC0_CLK>;
+				clock-names = "core";
+			};
+
+			video-encoder {
+				compatible = "venus-encoder";
+				clocks = <&gcc GCC_VENUS0_CORE0_VCODEC0_CLK>;
+				clock-names = "core";
 			};
 		};
 	};
