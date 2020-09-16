@@ -473,15 +473,15 @@ static const struct venus_resources msm8953_res = {
 	.vcodec0_clks = { "core" },
 	.vcodec1_clks = { "core" },
 	.vcodec_clks_num = 1,
-	.vcodec_pmdomains = { "gdsc_venus" },
-	.vcodec_pmdomains_num = 1,
+	.vcodec_pmdomains = { "venus", "vcodec0" },
+	.vcodec_pmdomains_num = 2,
 	.max_load = 1044480,
 	.hfi_version = HFI_VERSION_3XX,
 	.vmem_id = VIDC_RESOURCE_NONE,
 	.vmem_size = 0,
 	.vmem_addr = 0,
 	.dma_mask = 0xddc00000 - 1,
-	.fwname = "qcom/venus-4.2/venus.mdt",
+	.fwname = "venus.mdt",
 };
 
 static const struct freq_tbl sdm845_freq_table[] = {
