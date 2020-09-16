@@ -341,5 +341,6 @@
 #define VFE_GDSC				4
 #define OXILI_GX_GDSC				5
 #define OXILI_CX_GDSC				6
+#define VENUS_CORE0_GDSC			7
 
 #endif /* _DT_BINDINGS_CLK_MSM_GCC_8953_H */
