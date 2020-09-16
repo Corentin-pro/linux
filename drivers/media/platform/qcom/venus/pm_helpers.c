@@ -19,6 +19,26 @@
 #include "pm_helpers.h"
 
 static bool legacy_binding;
+static int vcodec_domains_get(struct device *dev);
+static void vcodec_domains_put(struct device *dev);
+static int vcodec_power(struct device *dev, bool on);
+
+static int vcodec_power(struct device *dev, bool on)
+{
+	struct venus_core *core = dev_get_drvdata(dev);
+	const struct venus_resources *res = core->res;
+	int ret = 0;
+
+	if (res->vcodec_pmdomains_num < 2)
+		return 0;
+
+	if (on)
+		ret = pm_runtime_get_sync(core->pmdomains[1]);
+	else 
+		pm_runtime_put(core->pmdomains[1]);
+
+	return 0;
+}
 
 static int core_clks_get(struct venus_core *core)
 {
@@ -308,6 +328,27 @@ vcodec_control_v3(struct venus_core *core, u32 session_type, bool enable)
 		writel(1, ctrl);
 }
 
+static int core_get_v3(struct device *dev)
+{
+	struct venus_core *core = dev_get_drvdata(dev);
+	int ret;
+
+	ret = core_clks_get(core);
+	if (ret)
+		return ret;
+
+	ret = vcodec_domains_get(dev);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static void core_put_v3(struct device *dev)
+{
+	vcodec_domains_put(dev);
+}
+
 static int vdec_get_v3(struct device *dev)
 {
 	struct venus_core *core = dev_get_drvdata(dev);
@@ -321,6 +362,12 @@ static int vdec_power_v3(struct device *dev, int on)
 	struct venus_core *core = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (on) {
+		ret = vcodec_power(dev, on);
+		if (ret)
+			return ret;
+	}
+
 	vcodec_control_v3(core, VIDC_SESSION_TYPE_DEC, true);
 
 	if (on == POWER_ON)
@@ -329,6 +376,9 @@ static int vdec_power_v3(struct device *dev, int on)
 		vcodec_clks_disable(core, core->vcodec0_clks);
 
 	vcodec_control_v3(core, VIDC_SESSION_TYPE_DEC, false);
+
+	if (!on)
+		vcodec_power(dev, on);
 
 	return ret;
 }
@@ -346,6 +396,12 @@ static int venc_power_v3(struct device *dev, int on)
 	struct venus_core *core = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (on) {
+		ret = vcodec_power(dev, on);
+		if (ret)
+			return ret;
+	}
+
 	vcodec_control_v3(core, VIDC_SESSION_TYPE_ENC, true);
 
 	if (on == POWER_ON)
@@ -355,11 +411,15 @@ static int venc_power_v3(struct device *dev, int on)
 
 	vcodec_control_v3(core, VIDC_SESSION_TYPE_ENC, false);
 
+	if (!on)
+		vcodec_power(dev, on);
+
 	return ret;
 }
 
 static const struct venus_pm_ops pm_ops_v3 = {
-	.core_get = core_get_v1,
+	.core_get = core_get_v3,
+	.core_put = core_put_v3,
 	.core_power = core_power_v1,
 	.vdec_get = vdec_get_v3,
 	.vdec_power = vdec_power_v3,
