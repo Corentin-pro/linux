@@ -1276,6 +1276,42 @@
 			status = "disabled";
 		};
 
+		bimc: interconnect@400000 {
+			compatible = "qcom,msm8953-bimc";
+			reg = <0x400000 0x5A000>;
+
+			clock-names = "bus", "bus_a";
+			clocks = <&rpmcc RPM_SMD_BIMC_CLK>,
+				 <&rpmcc RPM_SMD_BIMC_A_CLK>;
+
+			#interconnect-cells = <1>;
+		};
+
+		pcnoc: interconnect@500000 {
+			compatible = "qcom,msm8953-pcnoc";
+			reg = <0x500000 0x12080>;
+
+			clock-names = "bus", "bus_a";
+			clocks = <&rpmcc RPM_SMD_PCNOC_CLK>,
+				 <&rpmcc RPM_SMD_PCNOC_A_CLK>;
+
+			#interconnect-cells = <1>;
+		};
+
+		snoc: interconnect@580000 {
+			compatible = "qcom,msm8953-snoc";
+			reg = <0x580000 0x16080>;
+
+			clock-names = "bus", "bus_a",
+				      "mm_bus", "mm_bus_a";
+			clocks = <&rpmcc RPM_SMD_SNOC_CLK>,
+				 <&rpmcc RPM_SMD_SNOC_A_CLK>,
+				 <&rpmcc RPM_SMD_SYSMMNOC_CLK>,
+				 <&rpmcc RPM_SMD_SYSMMNOC_A_CLK>;
+
+			#interconnect-cells = <1>;
+		};
+
 		hexagon@4080000 {
 			compatible = "qcom,msm8953-mss-pil";
 			reg = <0x04080000 0x100>,
