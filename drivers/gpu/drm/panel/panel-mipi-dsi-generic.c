@@ -28,6 +28,8 @@
 #define to_mipi_dsi_generic(drm_panel) \
 	container_of(drm_panel, struct mipi_dsi_generic, panel)
 
+#define MAX_RESET_GPIOS	    2
+
 struct mipi_dsi_cmds {
 	int size;
 	uint8_t data[];
@@ -40,12 +42,21 @@ struct mipi_dsi_generic {
 	struct regulator_bulk_data *supplies;
 	int num_supplies;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *reset_gpios[MAX_RESET_GPIOS];
 	struct delayed_work bl_init_work;
 	struct mipi_dsi_cmds *on_cmds;
 	struct mipi_dsi_cmds *off_cmds;
 	unsigned long on_mode_mask;
 	unsigned long off_mode_mask;
 };
+
+static inline void mipi_dsi_set_reset(struct mipi_dsi_generic *ctx,
+				      unsigned int value)
+{
+	int i;
+	for (i = 0; i < MAX_RESET_GPIOS; i++)
+		gpiod_set_value_cansleep(ctx->reset_gpios[i], value);
+}
 
 static struct mipi_dsi_cmds *mipi_dsi_generic_parse_cmds(struct device *dev, const char *prop)
 {
@@ -164,7 +175,7 @@ static void mipi_dsi_generic_reset(struct mipi_dsi_generic *ctx)
 	const char *prop = "reset-sequence";
 	int seq_len, i, ret;
 
-	if (!ctx->reset_gpio)
+	if (!ctx->reset_gpios)
 		return;
 
 	seq_len = of_property_count_u32_elems(np, prop);
@@ -183,7 +194,7 @@ static void mipi_dsi_generic_reset(struct mipi_dsi_generic *ctx)
 			else
 				usleep_range(item * 1000, (item + 1) * 1000);
 		} else {
-			gpiod_set_value_cansleep(ctx->reset_gpio, !!item);
+			mipi_dsi_set_reset(ctx, !!item);
 		}
 	}
 }
@@ -215,7 +226,7 @@ static int mipi_dsi_generic_prepare(struct drm_panel *panel)
 	ret = mipi_dsi_generic_write_cmds(ctx->dsi, ctx->on_cmds);
 	if (ret < 0) {
 		dev_err(dev, "Failed to initialize panel: %d\n", ret);
-		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+		mipi_dsi_set_reset(ctx, 1);
 		regulator_bulk_disable(ctx->num_supplies, ctx->supplies);
 		return ret;
 	}
@@ -242,7 +253,7 @@ static int mipi_dsi_generic_unprepare(struct drm_panel *panel)
 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
 
 
-	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+	mipi_dsi_set_reset(ctx, 1);
 	regulator_bulk_disable(ctx->num_supplies, ctx->supplies);
 	pinctrl_pm_select_sleep_state(dev);
 
@@ -438,11 +449,13 @@ static int mipi_dsi_generic_probe(struct mipi_dsi_device *dsi)
 	if (ret)
 		return ret;
 
-	ctx->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->reset_gpio)) {
-		ret = PTR_ERR(ctx->reset_gpio);
-		dev_err(dev, "Failed to get reset-gpios: %d\n", ret);
-		return ret;
+	for (i = 0; i < MAX_RESET_GPIOS; i++) {
+		ctx->reset_gpios[i] = devm_gpiod_get_index_optional(dev, "reset", i, GPIOD_OUT_HIGH);
+		if (IS_ERR(ctx->reset_gpios[i])) {
+			ret = PTR_ERR(ctx->reset_gpios[i]);
+			dev_err(dev, "Failed to get reset-gpios[%d]: %d\n", i, ret);
+			return ret;
+		}
 	}
 
 	drm_panel_init(&ctx->panel, dev, &mipi_dsi_generic_panel_funcs,
